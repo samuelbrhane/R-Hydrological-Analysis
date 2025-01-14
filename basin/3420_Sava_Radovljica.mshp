@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SAGA_METADATA>
+  <HISTORY>
+    <MODULE>Vectorising Grid Classes</MODULE>
+    <OPTION type="choice" id="CLASS_ALL" name="Class Selection">1</OPTION>
+    <OPTION type="double" id="CLASS_ID" name="Class Identifier">1.000000</OPTION>
+    <OPTION type="choice" id="SPLIT" name="Vectorised class as...">0</OPTION>
+    <OPTION type="grid_system" id="PARAMETERS_GRID_SYSTEM" name="Grid system">
+      <CELLSIZE>100</CELLSIZE>
+      <XMIN>375262</XMIN>
+      <XMAX>622962</XMAX>
+      <YMIN>30922</YMIN>
+      <YMAX>193322</YMAX>
+      <DATA type="grid" id="GRID" name="Grid">
+        <GRID_OPERATION NAME="Assign">0</GRID_OPERATION>NOT SET</DATA>
+    </OPTION>
+    <DATA type="grid" id="GRID" name="Grid">
+      <GRID_OPERATION NAME="Assign">0</GRID_OPERATION>NOT SET</DATA>
+  </HISTORY>
+  <SOURCE>
+    <FILE>D:\Nejc\Switch-on\MODIS\GIS_boundaries\SAGA\3420_Sava_Radovljica.shp</FILE>
+    <DATABASE></DATABASE>
+    <PROJECTION></PROJECTION>
+  </SOURCE>
+  <DESCRIPTION></DESCRIPTION>
+</SAGA_METADATA>

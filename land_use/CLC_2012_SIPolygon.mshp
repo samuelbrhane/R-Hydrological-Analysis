@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SAGA_METADATA>
+  <HISTORY>
+    <FILE>D:\Nejc\SedAlp\RUSLE_SLO\C faktor\CLC2012\CLC_2012_SIPolygon.shp</FILE>
+  </HISTORY>
+  <SOURCE>
+    <FILE>D:\Nejc\SedAlp\RUSLE_SLO\C faktor\CLC2012\CLC_2012_SIPolygon.shp</FILE>
+    <DATABASE></DATABASE>
+    <PROJECTION>
+      <OGC_WKT>PROJCS["gauss_krueger_SLO", &#xD;GEOGCS["GCS_Hermannskogel", &#xD;DATUM["D_Hermannskogel", &#xD;SPHEROID["Bessel_1841", 6377397.155, 299.1528128]], &#xD;PRIMEM["Greenwich", 0.0], &#xD;UNIT["degree", 0.017453292519943295], &#xD;AXIS["Longitude", EAST], &#xD;AXIS["Latitude", NORTH]], &#xD;PROJECTION["Transverse_Mercator"], &#xD;PARAMETER["central_meridian", 15.0], &#xD;PARAMETER["latitude_of_origin", 0.0], &#xD;PARAMETER["scale_factor", 0.9999], &#xD;PARAMETER["false_easting", 500000.0], &#xD;PARAMETER["false_northing", -5000000.0], &#xD;UNIT["m", 1.0], &#xD;AXIS["x", EAST], &#xD;AXIS["y", NORTH], &#xD;AUTHORITY["EPSG","21700"]]</OGC_WKT>
+      <PROJ4></PROJ4>
+      <EPSG>-1</EPSG>
+    </PROJECTION>
+  </SOURCE>
+  <DESCRIPTION></DESCRIPTION>
+</SAGA_METADATA>

@@ -6,15 +6,44 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(
+  echo = TRUE,
+  fig.width = 9,      
+  fig.height = 6, 
+  fig.align = "center")
 
-
+library(airGRteaching)
+library(geodata)
 library(knitr)
 library(writexl)
 library(readxl)
 library(dplyr)
+library(tidyr)
 library(ggplot2)
 library(corrplot)
+library(lfstat)
+library(zoo)
+library(Kendall)
+library(trend)
+library(lmom)
+library(lmomco)
+library(SPEI)
+library(rsoi) 
+library(terra)
+library(raster)
+library(whitebox)
+library(sp)
+library(gstat)
+library(raster)
+library(airGR)
+library(TUWmodel)
+library(hydroGOF)
+library(DEoptim)
+library(GWEX)
+library(IDF)
+library(dismo)
+library(MODISTools)
+library(pRecipe)
 ```
 
 ```{r echo=FALSE}
@@ -29,6 +58,7 @@ gauge_stations <- list(
 temp_station <- list(
   CeljeMedlog = list(longitude = 15.2259, latitude = 46.2366, elevation = 242)
 )
+
 ```
 
 # [1. DATA PREPARATION]{style="color:blue; font-family:Arial; font-size:28px"}
@@ -92,7 +122,8 @@ for (i in missing_watertemps){
   # Find Watertemp and Airtemp for same date in previous years
   previous_data <- main_data %>% 
     filter(format(Date, "%m-%d") == date_without_year & Year < current_year) %>% 
-    select(Watertemp, Airtemp)
+    dplyr::select(Watertemp, Airtemp)
+
   
   # Calculate mean of Watertemp and Airtemp
   if(nrow(previous_data) > 0){
@@ -150,6 +181,7 @@ discharge_stats
 # Summary statistics for Discharge
 summary(main_data$Discharge)
 ```
+
 ```{r precipitation_statistics}
 # Calculate descriptive statistics for Precipitation 
 precipitation_stats <- data.frame(
@@ -168,7 +200,8 @@ precipitation_stats
 # Summary statistics for Precipitation
 summary(c(main_data$P1_Luce, main_data$p2_Solcava, main_data$P3_Lasko, main_data$P4_GornjiGrad, main_data$P5_Radegunda))
 ```
-``` {r precipiation_stations}
+
+```{r precipiation_stations}
 # P1_Luce
 mean(main_data$P1_Luce)
 sd(main_data$P1_Luce)
@@ -205,6 +238,7 @@ max(main_data$P5_Radegunda)
 median(main_data$P5_Radegunda)
 
 ```
+
 ```{r airtemp_statistics}
 # Calculate descriptive statistics for Air Temperature
 airtemp_stats <- data.frame(
@@ -286,6 +320,7 @@ lines(data_2022$Date, data_2022$P5_Radegunda, col = "orange")
 legend("topright", legend = c("P1_Luce", "P2_Solcava", "P3_Lasko", "P4_GornjiGrad", "P5_Radegunda"),
        col = c("blue", "red", "green", "purple", "orange"), lty = 1)
 ```
+
 ```{r average_precipiation}
 # Calculate the average precipitation across all stations
 main_data$Avg_Precipitation <- rowMeans(main_data[, c("P1_Luce", "P2_Solcava", "P3_Lasko", "P4_GornjiGrad", "P5_Radegunda")])
@@ -321,8 +356,8 @@ plot(data_2022$Date, data_2022$Airtemp, type = "l", col = "red",
      xlab = "Date", ylab = "Air Temperature (°C)", main = "Air Temperature For Year 2022")
 ```
 
-
 # [2.3. Calculate Correlation Between Precipitation Stations]{style="color:#12a23a; font-size:20px"}
+
 ```{r plot_correlation}
 # Precipitation columns
 precipitation_data <- main_data[, c("P1_Luce", "P2_Solcava", "P3_Lasko", "P4_GornjiGrad", "P5_Radegunda")]
@@ -339,6 +374,7 @@ corrplot(cor_matrix, method = "shade", type = "full",
           mar = c(0, 0, 2, 0)
 )
 ```
+[The correlation analysis for selected precipitation stations in the Savinja River basin reveals high inter-station correlations, with values ranging from 0.72 to 0.92. The strongest correlation is observed between P1_Luce and P4_GornjiGrad (0.92), indicating similar precipitation patterns, likely influenced by geographic or climatic factors. The weakest correlation (0.72) is between P2_Solcava and P3_Lasko, which may reflect localized variations in precipitation. The correlogram visually highlights these relationships, with darker shades representing stronger correlations. Stations such as P1_Luce, P4_GornjiGrad, and P5_Radegunda exhibit particularly high inter-correlations, suggesting potential redundancy in data collection across these locations.]{style="color:black; font-family:Verdana; font-size:14px; font-style:italic;"}
 
 
 # [2.4. Calculate Water Balance]{style="color:#12a23a; font-size:20px"}
@@ -350,14 +386,33 @@ catchment_area <- 1847000000
 # Calculate Runoff
 main_data$Runoff <- (main_data$Discharge * 3600 * 24 * 1000) / catchment_area
 
+main_data$Discharge_mm <- main_data$Discharge * 3600 * 24 * 1000
+
 # Calculate the water balance
 main_data$Water_Balance <- main_data$Avg_Precipitation - main_data$Evapotrans - main_data$Runoff
 
-# Save main_data to an Excel file
-# write_xlsx(main_data, "main_data_output.xlsx")
+# Calculated Runoff
+main_data$Calculated_Runoff <- main_data$Avg_Precipitation - main_data$Evapotrans
 ```
 
-# [2.5. Calculate Runoff Coefficient ]{style="color:#12a23a; font-size:20px"}
+```{r runoff_plot}
+# Plot measured and calculated runoff
+yearly_runoff <- main_data %>% 
+  group_by(Year) %>% 
+  summarise(
+    Total_Measured = sum(Runoff),
+    Total_Calculated = sum(Calculated_Runoff))
+
+plot(yearly_runoff$Year, yearly_runoff$Total_Measured, 
+     xlab = "Date", ylab ="Runoff", type = "l", col = "red", main = "Measured and Calculated Runoff")
+lines(yearly_runoff$Year, yearly_runoff$Total_Calculated, lty = 2, col = "green")
+legend("topright", legend = c("Measured", "Calculated"), col = c("red", "green"), lty = c(1, 2))
+```
+
+[The comparison between measured and calculated runoff for the Savinja River basin shows a general agreement in the annual trends. While the measured runoff (red line) closely aligns with the calculated runoff (green dashed line), slight deviations are observed in certain years, such as 2012 and 2020, which may be attributed to discrepancies in precipitation or evapotranspiration data. Overall, the calculated runoff provides a reasonable approximation of the measured values, validating the water balance approach.]{style="color:black; font-family:Verdana; font-size:14px; font-style:italic;"}
+
+
+# [2.5. Calculate Runoff Coefficient]{style="color:#12a23a; font-size:20px"}
 
 ```{r runoff_coeffiecient}
 # Group data by Year and calculate total runoff and total precipitation
@@ -379,8 +434,10 @@ plot(as.numeric(annual_runoff$Year), annual_runoff$Runoff_Coefficient, type = "b
 
 ```
 
+[The runoff coefficient values over the years show fluctuations between 0.31 and 0.55. Higher runoff coefficients, such as in 2013 and 2014, indicate a larger proportion of precipitation contributing to runoff, potentially due to higher precipitation intensity or reduced infiltration. Conversely, lower coefficients in years like 2011 and 2020 suggest greater infiltration or retention of precipitation within the catchment. This variability highlights the influence of climatic and catchment conditions on runoff generation.]{style="color:black; font-family:Verdana; font-size:14px; font-style:italic;"}
 
-# [2.6. Calculate Ratio Between Evapotranspiration and Precipitation  ]{style="color:#12a23a; font-size:20px"}
+
+# [2.6. Calculate Ratio Between Evapotranspiration and Precipitation]{style="color:#12a23a; font-size:20px"}
 
 ```{r evapotrans_prec_ratio}
 # Group data by Year and calculate total evapotranspiration and total precipitation
@@ -400,3 +457,1508 @@ plot(evapotrans_prec$Year, evapotrans_prec$Ratio, type = "b", col = "orange",
      xlab = "Year", ylab = "Ratio", main = "Evapotranspiration to Precipitation Ratio")
 ```
 
+[The evapotranspiration to precipitation ratio demonstrates annual variations, ranging from approximately 0.41 to 0.75. Years like 2011 and 2022 show higher ratios, indicating a larger fraction of precipitation is lost to evapotranspiration. Conversely, years like 2014 and 2010 have lower ratios, suggesting more precipitation is available for runoff and infiltration. These fluctuations highlight the influence of climatic variability on water balance dynamics within the catchment.]{style="color:black; font-family:Verdana; font-size:14px; font-style:italic;"}
+
+
+# [3. LOW FLOW ANALYSIS AND TREND ANALYSIS]{style="color:blue; font-family:Arial; font-size:28px"}
+
+[This section focuses on low-flow and trend analysis of the hydrological data. We will conduct a low-flow analysis using the `lfstat` package, which includes baseflow separation and plotting a flow duration curve. Additionally, we will calculate key low-flow indexes such as BFI (Baseflow Index), MAM (Mean Annual Minimum flow), and quantile flows (Q95, Q90, Q70). The section will also explore drought periods based on the Q95 threshold and analyze seasonal trends, including the Mann-Kendall trend test for variables like discharge, precipitation, air temperature, and evapotranspiration.]{style="font-family:Arial; font-size:16px;"}
+
+# [3.1. Conduct Low-Flow Analysis]{style="color:#12a23a; font-size:20px"}
+
+```{r low_flow_analysis}
+# Convert the Date column to POSIXct format for time series handling
+main_data$Date <- as.POSIXct(strptime(main_data$Date, format = "%Y-%m-%d"))
+
+# Define a zoo object for Discharge data with Date as the index
+Qzoo <- zoo(main_data$Discharge, main_data$Date)
+
+# Convert zoo object to lfobj using createlfobj
+discharge_timeseries <- createlfobj(ts(Qzoo), startdate = "01/01/2010", hyearstart = 1)
+
+# Define the units for the lfobj data
+setlfunit("m^3/s")
+
+# Conduct baseflow separation
+discharge_timeseries$baseflow <- baseflow(discharge_timeseries$flow)
+
+# Display the first few rows of the discharge_timeseries object
+head(discharge_timeseries)
+```
+
+```{r plot_flow_sample}
+plot(discharge_timeseries$flow, type = "l", ylab = "Flow")
+lines(discharge_timeseries$baseflow, col = "green")
+```
+
+[The low-flow analysis plot displays the discharge over time (black line) along with the baseflow (green line) derived from the baseflow separation process. A noticeable decreasing trend in total flow is evident over the years, which may indicate long-term changes in climatic conditions, reduced precipitation, or increased water abstraction. The baseflow component remains relatively stable, indicating the consistent contribution of groundwater to the streamflow, even as overall flow declines.]{style="color:black; font-family:Verdana; font-size:14px; font-style:italic;"}
+
+
+```{r plot_monthly_flow}
+bfplot(discharge_timeseries)
+```
+
+
+# [3.2. Plot Flow Duration Curve]{style="color:#12a23a; font-size:20px"}
+
+```{r plot_duration_curve}
+# Plot the Flow Duration Curve
+fdc(discharge_timeseries)
+abline(h=Q95(discharge_timeseries), col = "green", lty = 2)
+text(90, 10, "Q95")
+```
+
+
+
+[The Flow Duration Curve (FDC) shows the distribution of flow magnitudes over time in the catchment. The Q95 threshold (green dashed line) represents the flow that is exceeded 95% of the time, indicating low-flow conditions. The steep slope of the FDC at higher flows indicates a high variability of peak flows, while the flatter curve at lower flows reflects a stable baseflow regime. This result demonstrates the dominance of low to moderate flows in the catchment, with occasional high-flow events contributing to the variability observed in the upper range of the curve.]{style="color:black; font-family:Verdana; font-size:14px; font-style:italic;"}
+
+
+```{r compare_flow_duration}
+# FDC for the year 2014
+y2014 <- fdc(discharge_timeseries, year = 2014)
+
+# FDC for the year 2022
+y2022 <- fdc(discharge_timeseries, year = 2022)
+
+# Plot Flow Duration Curves (FDC) for 2014 and 2022
+plot(as.numeric(y2014), type = "l", col = "blue", ylab = "Flow", main = "Flow Frequency Comparison: 2014 and 2022")
+lines(as.numeric(y2022), col = "red", type = "l", lty = 2)
+legend("topright", legend = c("2014", "2022"), col = c("blue", "red"), lty = c(1, 2))
+```
+
+[The Flow Duration Curve (FDC) comparison between 2014 (blue line) and 2022 (red dashed line) shows a clear decrease in flow magnitudes over time. The FDC for 2014 indicates higher flows across all exceedance frequencies, suggesting wetter conditions and greater runoff compared to 2022. The lower flows in 2022 reflect a drier catchment, potentially due to reduced precipitation, increased water abstraction, or changes in land use. This comparison shows the progressive drying of the catchment and the variability in hydrological behavior over time.]{style="color:black; font-family:Verdana; font-size:14px; font-style:italic;"}
+
+
+# [3.3. Calculate Hydrological Indexes]{style="color:#12a23a; font-size:20px"}
+
+```{r calculate_hydrological_indexes}
+# Calculate Baseflow Index
+bfi <- BFI(discharge_timeseries)
+bfi
+
+# Calculate Mean Annual Minimum Flow
+mam <- MAM(discharge_timeseries)
+mam
+
+# Calculate Mean Flow
+meanflow <- mean(discharge_timeseries$flow, na.rm = TRUE)
+meanflow
+
+# Calculate Flow Quantiles
+# Q95
+q95 <- Q95(discharge_timeseries)
+q95
+
+# Q90
+q90 <- Q90(discharge_timeseries)
+q90
+
+# Q70
+q70 <- Q70(discharge_timeseries)
+q70
+
+# Calculate Seasonality Index at Q95
+seasonal_index <- seasindex(discharge_timeseries, Q = 95)
+seasonal_index
+
+# Calculate Seasonality Ratio
+seasonal_ratio <- seasratio(discharge_timeseries, breakdays = "01/07", Q = 95)
+seasonal_ratio
+
+# Summarize 
+summary(discharge_timeseries)
+```
+
+# [3.4. Identify Drought Periods Based on Q95 Threshold]{style="color:#12a23a; font-size:20px"}
+
+```{r identify_drought_periods}
+# Identify Drought Periods
+discharge_timeseries$drought <- discharge_timeseries$flow < q95
+
+# Display few rows of identified drought periods
+drought_periods = discharge_timeseries[discharge_timeseries$drought == TRUE, ]
+head(drought_periods)
+
+# Create a Date column
+drought_periods$Date <- as.Date(with(drought_periods, paste(year, month, day, sep = "-")), "%Y-%m-%d")
+
+plot(drought_periods$Date, drought_periods$flow,
+     col = "#1a24a4", xlab = "Date", ylab = "Flow", main = "Flow with Drought Periods (Below Q95 Threshold)")
+
+```
+
+
+[The drought periods are identified based on the Q95 threshold (8.638 m³/s), representing flows below which drought conditions occur. The plot shows variability in drought occurrences across the years. Drought events are minimal in 2010 and 2011 but increase significantly in 2012 and 2013, with prolonged low-flow conditions. No droughts are observed between 2014 and 2016 or 2019 and 2021, indicating periods of higher flows. In contrast, 2017 and 2022 show moderate to high numbers of drought days, reflecting a return to frequent low-flow conditions.]{style="color:black; font-family:Verdana; font-size:14px; font-style:italic;"}
+
+
+
+```{r drought_periods}
+# Identify drought periods using the Q95 threshold
+drought_time = find_droughts(discharge_timeseries, threshold = Q95(discharge_timeseries), na.rm = TRUE)
+
+# Summarize drought events, filtering out minor ones
+selected = summary(drought_time, drop_minor = 0)
+
+# Plot the drought time series
+plot(drought_time)
+```
+
+[The plot displays drought periods identified using the Q95 threshold, with shaded segments indicating periods of low flow. The results show shorter drought durations around the end of 2010, followed by multiple droughts between 2012 and 2014, some of which are more prolonged. A significant drought period is observed toward the end of 2017, with even longer durations in the year 2022.]{style="color:black; font-family:Verdana; font-size:14px; font-style:italic;"}
+
+
+```{r drought_distribution}
+# Plot the seasonal distribution of selected drought events
+plot(season(selected$time))
+```
+
+[The plot illustrates the seasonal distribution of drought events. The results indicate that droughts predominantly occur during the summer season, followed by autumn. Spring experiences fewer droughts, while winter has the least occurrences due to lower evapotranspiration and stable baseflow conditions during colder months.]{style="color:black; font-family:Verdana; font-size:14px; font-style:italic;"}
+
+
+# [3.5. Conduct Mann-Kendall Test]{style="color:#12a23a; font-size:20px"}
+
+```{r mann_kendall_test}
+# Initialize list to store the results
+mann_kandell_test <- list()
+
+# Mann-Kendall test for Discharge
+mann_kandell_test$Discharge <- MannKendall(main_data$Discharge)
+
+# Mann-Kendall test for Precipitation at each station
+precip_stations <- c("P1_Luce", "P2_Solcava", "P3_Lasko", "P4_GornjiGrad", "P5_Radegunda")
+for (station in precip_stations) {
+  mann_kandell_test[[station]] <- MannKendall(main_data[[station]])
+}
+
+# Mann-Kendall test for Air Temperature
+mann_kandell_test$Airtemp <- MannKendall(main_data$Airtemp)
+
+# Mann-Kendall test for Evapotranspiration
+mann_kandell_test$Evapotrans <- MannKendall(main_data$Evapotrans)
+
+# Test result
+mann_kandell_test
+```
+
+[The Mann-Kendall test results indicate no significant trends for most precipitation stations, with P1_Luce showing a marginally decreasing trend. For air temperature, a slight increasing trend is observed with a statistically significant p-value, suggesting a gradual warming over time. Evapotranspiration shows no significant trend, indicating stable evapotranspiration levels throughout the analyzed period.]{style="color:black; font-family:Verdana; font-size:14px; font-style:italic;"}
+
+
+```{r mannkendall_test}
+mk.test(main_data$Discharge)
+```
+
+[The Mann-Kendall test for discharge indicates a statistically significant decreasing trend, with a p-value of 0.00116. This result reflects a decline in water flow over time, suggesting potential long-term changes in hydrological conditions or water availability in the catchment.]{style="color:black; font-family:Verdana; font-size:14px; font-style:italic;"}
+
+
+```{r discharge_plot}
+plot(main_data$Date, main_data$Discharge, type = "l", xlab = "Year", ylab = "Discharge[m3/s]", main = "Discharge plot")
+abline(lm(main_data$Discharge ~ main_data$Date), lty = 2, col = "red")
+
+```
+
+# [4. FLOOD FREQUENCY ANALYSIS]{style="color:blue; font-family:Arial; font-size:28px;"}
+
+[ In this section, we will perform a flood frequency analysis based on daily discharge data to assess extreme flood events. The analysis begins with defining an annual maxima sample derived from daily discharge records. Next, we will import the `vQvk` peak discharge data, covering the complete available dataset, and compare it with the annual maxima sample to validate consistency. Using the `vQvk` data, we will conduct a flood frequency analysis applying at least three different distribution functions, and the results will be visualized, highlighting measured discharge data under the Weibull distribution. Additionally, confidence intervals will be calculated by the `genci.simple` function from the `lmomco` package. ]{style="font-family:Arial; font-size:16px;"}
+
+# [4.1. Define the Annual Maxima Sample]{style="color:#12a23a; font-size:20px;"}
+
+``` {r annual_maxima_sample}
+# Max discharge values 
+DischargeMax <- main_data %>% 
+  group_by(Year) %>% 
+  summarise(
+    maxDischarge = max(Discharge)
+  )
+
+DischargeMax
+
+# Plot yearly maximum discharge
+plot(DischargeMax$Year, DischargeMax$maxDischarge, type = "l", xlab = "Year", ylab = "Max Discharge[m3/s]", 
+     main = "Yearly Max Discharge")
+abline(lm(DischargeMax$maxDischarge ~ DischargeMax$Year), lty = 2, col = "red")
+```
+
+
+[The plot of yearly maximum discharge shows a clear declining trend in peak discharge values over the analyzed period. This is supported by the red dashed line, which represents the linear regression fit, further confirming the decreasing trend. The reduction in maximum discharge values could indicate a potential change in hydrological conditions, such as reduced precipitation intensity or changes in land use and catchment characteristics, affecting runoff generation during extreme events.]{style="color:black; font-family:Verdana; font-size:14px; font-style:italic;"}
+
+
+# [4.2. Import the vQvk Peak Discharge Data and Compare Values]{style="color:#12a23a; font-size:20px;"}
+
+```{r compare_peak_values}
+peak_data <- read_excel("peak_discharge_data.xlsx")
+
+# Calculate annual peak for vQvk discharge
+annual_maxima_vQvk <- peak_data %>% 
+  group_by(Year) %>% 
+  summarise(
+    vQvk = max(Qvk, na.rm = TRUE)
+  )
+
+# Display few rows
+head(annual_maxima_vQvk)
+
+# Filter vQvk data from 2010 onward
+annual_vQvk_selected <- annual_maxima_vQvk %>% 
+  filter(Year >= 2010)
+
+# Combine the two peak discharge
+combined_data <- data.frame(
+  Year = annual_vQvk_selected$Year,
+  main_DischargeMax = DischargeMax$maxDischarge,
+  vQvk_Discharge = annual_vQvk_selected$vQvk
+)
+
+# Determine y-axis limits
+y_range <- range(c(combined_data$main_DischargeMax, combined_data$vQvk_Discharge), na.rm = TRUE)
+
+# Plotting vQvk peak discharge
+plot(combined_data$Year, combined_data$vQvk_Discharge, type = "l", col = "blue", lwd = 1,
+     xlab = "Year", ylab = "Peak Discharge", main = "Comparison of Peak Discharge Values", ylim = y_range)
+
+# Add main_DischargeMax to the plot
+lines(combined_data$Year, combined_data$main_DischargeMax, col = "red", lwd = 1)
+
+# Adding a legend
+legend("topright", legend = c("Main DischargeMax", "vQvk Discharge"),
+       col = c("red", "blue"), lwd = 1)
+
+```
+
+
+
+
+# [4.3. Conduct Flood Frequency Analysis Using Multiple Distribution Functions]{style="color:#12a23a; font-size:20px;"}
+
+```{r flood_frequency_analysis}
+# Summary statistics for vQvk
+summary(annual_maxima_vQvk)
+
+# Plot annual maxima series for vQvk
+plot(annual_maxima_vQvk$Year, annual_maxima_vQvk$vQvk, type = "b",
+     xlab = "Year", ylab = "vQvk [m3/s]", main = "Annual Peak Discharge for Savinja River")
+
+# Calculate L-moments for the vQvk data
+lmoments <- lmoms(annual_maxima_vQvk$vQvk)
+
+# Display calculated L-moments
+lmoments$lambdas  
+
+# Estimate parameters for PE3, GEV, GNO, Normal, and Weibull distributions
+pe3par <- lmom2par(lmoments, type = "pe3")
+gevpar <- lmom2par(lmoments, type = "gev")
+gnopar <- lmom2par(lmoments, type = "gno")
+norpar <- lmom2par(lmoments, type = "nor")  
+wei_par <- lmom2par(lmoments, type = "wei") 
+
+# Define return periods and calculate exceedance probabilities
+return_periods <- c(2, 5, 10, 20, 30, 50, 100, 300,500)
+
+# Calculate Fx values for each return period
+exceedance_probs <- 1 - 1 / return_periods  
+
+# Calculate discharge values for each return period using PE3, GEV, GNO, Normal, and Weibull distributions
+discharge_pe3 <- quape3(exceedance_probs, pe3par)
+discharge_gev <- quagev(exceedance_probs, gevpar)
+discharge_gno <- quagno(exceedance_probs, gnopar)
+discharge_nor <- quanor(exceedance_probs, norpar)
+discharge_wei <- quawei(exceedance_probs, wei_par)
+
+# Calculate Weibull plotting positions for observed data and return periods for measured data
+weibull_positions <- pp(annual_maxima_vQvk$vQvk, a = 0)
+observed_return_periods <- 1 / (1 - weibull_positions)
+
+# Plot the PE3, GEV, GNO, Normal, and Weibull distribution results
+plot(return_periods, discharge_pe3, type = "l", log = "x", col = "blue",
+     xlab = "Return Period [years]", ylab = "Discharge [m3/s]",
+     main = "Flood Frequency Analysis for Savinja River", ylim = c(400, max(discharge_pe3, discharge_gev, discharge_gno, discharge_wei, na.rm = TRUE)))
+
+# Add GEV, GNO, Normal, and Weibull distribution lines
+lines(return_periods, discharge_gev, col = "red")
+lines(return_periods, discharge_gno, col = "green")
+lines(return_periods, discharge_nor, col = "orange")
+lines(return_periods, discharge_wei, col = "#ff31a1") 
+
+# Add measured discharge data points
+points(observed_return_periods, sort(annual_maxima_vQvk$vQvk), col = "black", pch = 16)
+
+# Add legend
+legend("topleft", legend = c("PE3 Distribution", "GEV Distribution", "GNO Distribution", 
+                                 "Normal Distribution", "Weibull Distribution", "Observed Data"),
+       col = c("blue", "red", "green", "orange", "#ff31a1", "black"), lty = 1, pch = c(NA, NA, NA, NA, NA))
+
+
+```
+
+[The flood frequency analysis illustrates discharge values for various return periods using multiple probability distributions, including PE3, GEV, GNO, Normal, and Weibull. The Weibull and PE3 distributions show a closer fit to the observed data, particularly for low and moderate return periods, making them more reliable for this dataset. On the other hand, GEV and GNO distributions tend to overestimate discharge values, especially for higher return periods, while the Normal distribution consistently underestimates discharge across most return periods. This comparison shows the importance of selecting an appropriate distribution for accurate flood frequency analysis in hydrological studies.]{style="color:black; font-family:Verdana; font-size:14px; font-style:italic;"}
+
+
+# [4.4. Calculate Confidence Intervals]{style="color:#12a23a; font-size:20px;"}
+
+```{r confidence_intervals}
+# Set seed for reproducibility
+set.seed(123)
+
+# Calculate confidence intervals for the PE3 distribution
+ci_pe3 <- genci.simple(para = pe3par, n = length(annual_maxima_vQvk$vQvk), 
+                       f = exceedance_probs, level = 0.90, nsim = 1000, edist = "gno")
+
+# Combine the confidence intervals and design discharges
+confidence_intervals <- data.frame(
+  Return_Period = return_periods,
+  Lower_CI = ci_pe3$lwr,
+  Upper_CI = ci_pe3$upr,
+  PE3_Discharge = discharge_pe3
+)
+
+# Plot PE3 distribution with confidence intervals
+plot(confidence_intervals$Return_Period, confidence_intervals$PE3_Discharge, type = "l", log = "x", 
+     col = "green", xlab = "Return Period [years]", ylab = "Discharge [m3/s]",
+     main = "Flood Frequency Analysis", 
+     ylim = c(400, max(ci_pe3$upr, na.rm = TRUE)))
+
+# Add confidence interval bounds for PE3 distribution
+lines(confidence_intervals$Return_Period, confidence_intervals$Lower_CI, col = "purple", lty = 2)
+lines(confidence_intervals$Return_Period, confidence_intervals$Upper_CI, col = "purple", lty = 2)
+
+# Add observed discharge data points for comparison
+points(observed_return_periods, sort(annual_maxima_vQvk$vQvk), col = "black", pch = 16)
+
+# Add legend
+legend("bottomright", legend = c("PE3 Distribution", "Lower CI", "Upper CI", "Observed Data"),
+       col = c("green", "purple", "purple", "black"), lty = c(1, 2, 2, NA), pch = c(NA, NA, NA, 16))
+
+```
+
+  
+[Based on the previous analysis, the Weibull and PE3 distributions were observed to fit the dataset well, with PE3 being slightly more consistent with the observed data. As a result, the PE3 distribution was selected for calculating the confidence intervals. The plot shows the PE3 discharge curve (green line) along with the 90% confidence intervals (purple dashed lines). The observed data points (black dots) are mostly contained within the confidence intervals, demonstrating the reliability of the PE3 model. Additionally, the confidence intervals widen for larger return periods, reflecting increased uncertainty in predicting extreme events such as rare floods.]{style="color:black; font-family:Verdana; font-size:14px;"}
+
+
+# [6. PRECIPITATION DATA ANALYSIS]{style="color:blue; font-family:Arial; font-size:28px;"}
+
+[ In this section, we will analyze precipitation data to explore trends and variability across multiple thresholds and indices. We begin by calculating the total number of days with measurable precipitation, as well as days with precipitation exceeding 10 mm and 50 mm, followed by determining the probability of occurrence for each threshold. Next, we will compute Standardized Precipitation Index (SPI) values over 1, 3, 6, and 12-month periods for each of the five precipitation stations to assess drought conditions. The identified drought periods will then be compared to those derived from discharge data using the `lfstat` package, providing insight into the relationship between precipitation and drought events. Additionally, we will calculate the Effective Drought (ED) index and examine its relationship with the SPI results. Finally, we will incorporate the North Atlantic Oscillation (NAO) index by downloading NAO data and calculating its correlation with precipitation records to investigate potential climate influences on regional precipitation patterns. ]{style="font-family:Arial; font-size:16px;"}
+
+# [6.1 Calculate Days with Precipitation]{style="color:#12a23a; font-size:20px;"}
+
+```{r precipitation_days}
+# Calculate days with precipitation > 10 mm
+prep_above_10 <- main_data %>%
+  summarise(
+    P1_Luce = sum(P1_Luce > 10),
+    P2_Solcava = sum(P2_Solcava > 10),
+    P3_Lasko = sum(P3_Lasko > 10),
+    P4_GornjiGrad = sum(P4_GornjiGrad > 10),
+    P5_Radegunda = sum(P5_Radegunda > 10),
+  )
+
+# Calculate frequency for days with precipitation > 10 mm
+frequency_above_10 <- prep_above_10 * 100 / nrow(main_data)
+
+# Combine both the counts and frequency rows
+results_above_10 <- bind_rows(prep_above_10, frequency_above_10)
+rownames(results_above_10) <- c("Days", "Frequency")
+
+# Display the results
+results_above_10
+
+# Calculate days with precipitation > 50 mm
+prep_above_50 <- main_data %>%
+  summarise(
+    P1_Luce = sum(P1_Luce > 50),
+    P2_Solcava = sum(P2_Solcava > 50),
+    P3_Lasko = sum(P3_Lasko > 50),
+    P4_GornjiGrad = sum(P4_GornjiGrad > 50),
+    P5_Radegunda = sum(P5_Radegunda > 50)
+  )
+
+# Calculate frequency for days with precipitation > 50 mm
+frequency_above_50 <- prep_above_50 * 100 / nrow(main_data)
+
+# Combine both the counts and frequency rows
+results_above_50 <- bind_rows(prep_above_50, frequency_above_50)
+rownames(results_above_50) <- c("Days", "Frequency")
+
+# Display the results
+results_above_50
+```
+
+# [6.2 Calculate SPI Indexes]{style="color:#12a23a; font-size:20px;"}
+
+```{r SPI_indexes}
+# Create a zoo object for all 5 stations
+precip_zoo <- zoo(main_data[, c("P1_Luce", "P2_Solcava", "P3_Lasko", "P4_GornjiGrad", "P5_Radegunda")], order.by = main_data$Date)
+
+head(precip_zoo)
+
+# Convert time index to year-month
+yearmon_index <- as.yearmon(time(precip_zoo))
+
+# Aggregate precipitation data by month
+monthly_precip <- aggregate(precip_zoo, yearmon_index, sum)
+
+# Plot the aggregated monthly precipitation data for P1_Luce
+plot(monthly_precip$P1_Luce, xlab="Year", ylab="Monthly precipitation [mm]", main="Monthly Precipitation P1_Luce")
+
+# Get summary of the monthly data
+summary(monthly_precip)  
+
+# Calculate SPI at 3-month scale for all 5 stations
+# P1_Luce SPI (3-month scale)
+spi_3_P1_Luce <- spi(data = as.numeric(monthly_precip$P1_Luce), scale = 3, distribution = "Gamma")
+
+# P2_Solcava SPI (3-month scale)
+spi_3_P2_Solcava <- spi(data = as.numeric(monthly_precip$P2_Solcava), scale = 3, distribution = "Gamma")
+
+# P3_Lasko SPI (3-month scale)
+spi_3_P3_Lasko <- spi(data = as.numeric(monthly_precip$P3_Lasko), scale = 3, distribution = "Gamma")
+
+# P4_GornjiGrad SPI (3-month scale)
+spi_3_P4_GornjiGrad <- spi(data = as.numeric(monthly_precip$P4_GornjiGrad), scale = 3, distribution = "Gamma")
+
+# P5_Radegunda SPI (3-month scale)
+spi_3_P5_Radegunda <- spi(data = as.numeric(monthly_precip$P5_Radegunda), scale = 3, distribution = "Gamma")
+
+# Plot SPI-3 for P1_Luce
+plot(spi_3_P1_Luce, main = "SPI-3 for P1_Luce")
+
+# Plot SPI-3 for P2_Solcava
+plot(spi_3_P2_Solcava, main = "SPI-3 for P2_Solcava")
+
+# Plot SPI-3 for P3_Lasko
+plot(spi_3_P3_Lasko, main = "SPI-3 for P3_Lasko")
+
+# Plot SPI-3 for P4_GornjiGrad
+plot(spi_3_P4_GornjiGrad, main = "SPI-3 for P4_GornjiGrad")
+
+# Plot SPI-3 for P5_Radegunda
+plot(spi_3_P5_Radegunda, main = "SPI-3 for P5_Radegunda")
+
+# View SPI values
+spi_3_P1_Luce
+spi_3_P2_Solcava
+spi_3_P3_Lasko
+spi_3_P4_GornjiGrad
+spi_3_P5_Radegunda
+```
+
+
+
+
+# [6.4 Calculate ED Indexes]{style="color:#12a23a; font-size:20px;"}
+
+```{r ED_indexes}
+# Convert data to daily for P1_Luce
+daily_date <- as.Date(time(precip_zoo))
+
+# Daily precipitation totals for P1_Luce
+daily_precip <- aggregate(precip_zoo$P1_Luce, daily_date, sum) 
+
+# Check the basic statistics of the daily data
+summary(daily_precip)
+
+# Plot daily precipitation to examine data structure
+plot(daily_precip, xlab="Year", ylab="Daily precipitation [mm]", main="Daily Precipitation for P1_Luce")
+
+# Parameters
+observation_days <- 365 
+cumulative_precip <- rep(NA, length(daily_precip))
+
+# Convert daily precipitation data to a numeric vector
+precip_values <- as.numeric(daily_precip)  
+
+# Calculate cumulative precipitation (EP)
+for (day in (observation_days + 1):length(precip_values)) { 
+  cumulative_sum <- 0
+  for (past_day in 1:observation_days) {
+    cumulative_sum <- cumulative_sum + sum(precip_values[(day - past_day + 1):day]) / past_day
+  }
+  cumulative_precip[day] <- cumulative_sum
+}
+
+# Mean of cumulative precipitation
+mean_cumulative_precip <- mean(cumulative_precip, na.rm=TRUE)  
+
+# Deviation from mean
+deviation_precip <- cumulative_precip - mean_cumulative_precip 
+
+# Standardized EDI
+EDI <- deviation_precip / sd(deviation_precip, na.rm=TRUE)  
+
+# Plot EDI with drought and wetness severity lines
+plot(time(daily_precip), EDI, type="l", col="#000000", lty=3, 
+     xlab="Year", ylab="EDI", main="Effective Drought Index (EDI) for P1_Luce", xaxt="n")
+
+# Define yearly labels for the x-axis
+years <- seq(2010, 2022, by = 1)
+x_positions <- seq(from = as.numeric(time(daily_precip)[1]), 
+                   to = as.numeric(time(daily_precip)[length(time(daily_precip))]), 
+                   length.out = length(years))
+
+# Add x-axis with yearly labels
+axis(1, at = x_positions, labels = years)
+
+# Add threshold lines
+abline(h = c(-2, -1.5, -1, 1, 1.5, 2), 
+       col = c("red", "orange", "yellow", "green", "lightblue", "blue"), 
+       lty = 2)
+
+# Add labels for each threshold
+text(x = rep(mean(x_positions), 6), y = c(-2, -1.5, -1, 1, 1.5, 2), 
+     labels = c("Extremely Dry", "Severely Dry", "Moderately Dry", 
+                "Moderately Wet", "Severely Wet", "Extremely Wet"),
+     col = c("red", "orange", "yellow", "green", "lightblue", "blue"), 
+     pos = 4)
+
+```
+
+[The plot shows the Effective Drought Index (EDI) values for P1_Luce, highlighting variations in drought and wetness conditions from 2010 to 2022. The years 2012 and mid-2021 display extremely dry conditions (EDI below -2), while mid-2012, late 2013, and mid-2014 indicate extremely wet conditions (EDI above 2). Seasonal fluctuations are evident, reflecting the influence of annual weather patterns. ]{style="color:black; font-family:Verdana; font-size:14px; font-style:italic;"}
+
+
+```{r spi_comparison}
+# Plot SPI for comparison
+par(mar = c(3, 3, 3, 3) + 0.1)
+plot(time(monthly_precip), spi_3_P1_Luce$fitted, type="l", col="#000000", lty=3, 
+     xlab="Year", ylab="SPI-3", main="Standardized Precipitation Index (SPI-3) for P1_Luce")
+
+# Add threshold lines
+abline(h = c(-2, -1.5, -1, 1, 1.5, 2), 
+       col = c("red", "orange", "yellow", "green", "lightblue", "blue"), 
+       lty = 2)
+
+# Add labels for each threshold
+text(x = rep(2011, 6), y = c(-2, -1.5, -1, 1, 1.5, 2),
+     labels = c("Extremely Dry", "Severely Dry", "Moderately Dry", "Moderately Wet", "Severely Wet", "Extremely Wet"),
+     col = c("red", "orange", "yellow", "green", "lightblue", "blue")) 
+
+drought_zoo = zoo(selected$duration, selected$time)
+par(new = TRUE)
+plot(drought_zoo, axes = FALSE, xlab = "", ylab = "", type = "h", col = "purple", lwd = 2)
+axis(side = 4, at = pretty(range(drought_zoo)))
+mtext("Duration of hydrological drought", side = 4, line = 3)
+```
+
+[The plot compares the SPI-3 values for P1_Luce with the previously identified drought periods derived from the discharge data. Years such as 2010, 2011, 2012, 2017, and 2022 show consistency between meteorological droughts (negative SPI-3) and hydrological droughts (purple bars). However, some discrepancies are observed, such as in mid-2013, where precipitation data indicates wet conditions (positive SPI-3), while discharge data identifies drought conditions. This differences in meteorological and hydrological droughts are captured and emphasizes the complementary nature of these indices in understanding drought dynamics.]{style="color:black; font-family:Verdana; font-size:14px; font-style:italic;"}
+
+# [6.5 Correlation between NAO and precipitation data]{style="color:#12a23a; font-size:20px;"}
+```{r NAO_index}
+# Download NAO index data
+nao <- download_nao()
+
+# Check the structure of the data
+head(nao)  
+
+# Basic statistics
+summary(nao$NAO) 
+
+# Plot NAO index data
+plot(nao$NAO,ylab="NAO",type="l")
+
+# Autocorrelation in NAO data
+acf(nao$NAO[1:200])
+
+# Aggregate Precipitation Data by Month
+monthly_precip <- main_data %>%
+  group_by(Year, Month) %>%
+  summarize(
+    P1_Luce = mean(P1_Luce, na.rm = TRUE),
+    P2_Solcava = mean(P2_Solcava, na.rm = TRUE),
+    P3_Lasko = mean(P3_Lasko, na.rm = TRUE),
+    P4_GornjiGrad = mean(P4_GornjiGrad, na.rm = TRUE),
+    P5_Radegunda = mean(P5_Radegunda, na.rm = TRUE)
+  ) %>%
+  mutate(YearMonth = as.yearmon(paste(Year, Month), "%Y %m"))
+
+# Prepare NAO Data
+nao <- nao %>%
+  mutate(YearMonth = as.yearmon(paste(Year, Month), "%Y %b"))
+
+# Merge Precipitation and NAO Data
+merged_data <- merge(monthly_precip, nao, by = "YearMonth", all.x = TRUE)
+
+# Compute Correlations
+correlations <- merged_data %>%
+  dplyr::select(P1_Luce, P2_Solcava, P3_Lasko, P4_GornjiGrad, P5_Radegunda, NAO) %>%
+  dplyr::summarize(across(-NAO, ~ cor(., merged_data$NAO))) %>%
+  tidyr::pivot_longer(cols = everything(), names_to = "Station", values_to = "Correlation")
+
+
+# Display correlations
+correlations
+
+# Visualize correlations
+ggplot(correlations, aes(x = Station, y = Correlation, fill = Station)) +
+  geom_bar(stat = "identity") +
+  labs(
+    title = "Correlation between NAO and Precipitation",
+    x = "Precipitation Station",
+    y = "Correlation Coefficient"
+  )
+```
+
+
+[The bar chart show the correlation coefficients between the NAO (North Atlantic Oscillation) index and precipitation data across five meteorological stations. All stations exhibit a negative correlation, with values ranging from -0.217 at P4_GornjiGrad to -0.286 at P3_Lasko. This suggests that an increase in the NAO index is generally associated with decreased precipitation at these stations. The magnitude of these correlations highlights the varying sensitivity of different stations to atmospheric conditions influenced by the NAO.]{style="color:black; font-family:Verdana; font-size:14px; font-style:italic;"}
+
+
+# [7. SPATIAL DATA ANALYSIS]{style="color:blue; font-family:Arial; font-size:28px"}
+[ This section focuses on analyzing the spatial characteristics of the catchment. We will generate a stream network and catchment boundary using a digital terrain model and compare it with the actual stream network. Basic terrain statistics like slope will be calculated, along with a hypsometric curve to assess elevation distribution. Using the Thiessen polygon method, we will calculate areal precipitation and compare it to individual station data. Finally, land-use patterns will be analyzed using the 2012 Corine Land Cover (CLC) map to explore their impact on catchment hydrology. ]{style="font-family; font-size:16px;"}
+
+# [7.1 Stream Network and Catchment Boundary Generation]{style="color:#12a23a; font-size:20px;"}
+
+```{r stream_network}
+# Import Catchment Area
+catchment_area <- vect("basin/6210_Savinja_VSirje.shp")
+catchment_area
+
+# Import Digital Terrain Model (DTM)
+digital_terrain_model <- rast("slo_100_ASCI.asc")
+digital_terrain_model
+
+
+# Plot Digital Terrain Model
+plot(
+  digital_terrain_model,
+  main = "Digital Terrain Model (DEM)",
+  col = terrain.colors(20),
+  axes = TRUE
+)
+
+# Set the CRS for both the catchment area and the digital terrain model
+crspost = crs(catchment_area)
+crs(digital_terrain_model) = crspost
+
+# Project the catchment area
+project1 <- project(catchment_area, crspost)
+
+# Plot the catchment area
+plot(catchment_area, main = "Catchment Area Boundary", col = "lightblue", axes = TRUE)
+
+# Overlay the projected catchment area
+plot(project1, add = TRUE, border = "blue", lwd = 2)
+
+# Add North Arrow and Scale Bar
+north("topleft")
+sbar(10000, xy = c(435000, 95000), type = "bar", divs = 2, below = "km", label = c(0, 5, 10))
+
+```
+
+# [7.2 Compare Generated Stream Network with Actual One]{style="color:#12a23a; font-size:20px;"}
+
+```{r compare_stream_network}
+# Load Actual Stream Network
+actual_stream_network <- vect("streams/VT_POVR_CRTLine.shp")
+
+
+# Fill Local Depressions
+wbt_breach_depressions_least_cost(dem = "slo_100_ASCI.asc", output = "dem_breached.tif", dist = 500, fill = TRUE)
+
+# Fill Depressions Using Wang and Liu Algorithm
+wbt_fill_depressions_wang_and_liu(dem = "dem_breached.tif", output = "filled_dem.tif")
+
+# Flow Accumulation Calculation
+wbt_d8_flow_accumulation(input = "filled_dem.tif", output = "flow_accumulation.tif")
+
+# Flow Direction Calculation
+wbt_d8_pointer(dem = "filled_dem.tif", output = "flow_direction.tif")
+
+# Generate River Network
+wbt_extract_streams(flow_accum = "flow_accumulation.tif", output = "generated_streams.tif", threshold = 1000)
+                    
+
+# Load Generated Stream Network
+generated_stream_network <- rast("generated_streams.tif")
+
+# Transform Generated Stream Network into Polygons
+generated_stream_polygons <- as.polygons(generated_stream_network)
+
+# Load Digital Terrain Model for Plotting
+digital_terrain_model <- rast("slo_100_ASCI.asc")
+
+# Compare Generated and Actual Stream Networks
+plot(digital_terrain_model) 
+lines(generated_stream_polygons, col = "gray")
+lines(actual_stream_network, col = "red")
+
+legend("topleft", legend = c("Generated Streams", "Actual Streams"), col = c("gray", "red"),
+  lty = 1, lwd = 2)
+
+plot(digital_terrain_model)
+
+# Generate a catchment boundary
+d1 = data.frame("veliko sirje", X=515395, Y=105435)
+station = vect(d1, geom = c("X", "Y"))
+points(station, lwd=100, col="red")
+
+wbt_watershed(
+  d8_pntr = "flow_direction.tif",
+  pour_pts = "tocka.shp",
+  output = "catchment_area.tif"
+)
+
+# Import the catchment area
+catchment_area_raster <- rast("catchment_area.tif")
+
+# Transform raster to polygon
+catchment_area_polygon <- as.polygons(catchment_area_raster)
+
+# Plot the digital terrain model
+plot(digital_terrain_model, main = "Catchment Area and Digital Terrain Model")
+
+# Add the catchment area to the plot
+plot(catchment_area_polygon, add = TRUE, col = "orange", border = "red")
+lines(catchment_area, col = "white")
+
+```
+
+# [7.3 Calculate Terrain Statistics for Selected Catchment]{style="color:#12a23a; font-size:20px;"}
+
+```{r terrain_statistics}
+# Calculate Terrain Slope
+terrain_slope <- terrain(digital_terrain_model, v = "slope", unit = "degrees")
+
+# Calculate Basic Statistics
+slope_statistics <- summary(values(terrain_slope))
+slope_statistics
+
+# Visualize Slope
+plot(terrain_slope, col = terrain.colors(10), main = "Slope Map")
+north("topleft")
+
+# Histogram of Slope
+hist(values(terrain_slope), main = "Slope Histogram", xlab = "Slope (degrees)", breaks = 20,
+     col = "lightblue")
+
+```
+
+[The histogram represents the distribution of slope values within the Savinja Veliko Sirje catchment area. The majority of slopes are concentrated between 0° and 20°, with a significant peak in the lower range (0°–10°), indicating that the terrain is predominantly flat to gently sloping. Higher slope values (above 30°) are less frequent, suggesting that steep areas are limited in extent within the catchment. This slope distribution can have implications for runoff, erosion, and land-use planning within the region.]{style="color:black; font-family:Verdana; font-size:14px; font-style:italic;"}
+
+```{r area_perimeter_catchment}
+# Area and Perimeter of the Catchment
+catchment_area_km2 <- expanse(catchment_area, unit = "km")
+catchment_area_km2
+
+catchment_perimeter <- perim(catchment_area)
+catchment_perimeter
+```
+
+# [7.4 Plot Catchment Hypsometric Curve]{style="color:#12a23a; font-size:20px;"}
+
+```{r hypsometric_curve}
+# Plot Hypsometric Curve
+plot(ecdf(as.numeric(values(digital_terrain_model))), xlab = "Elevation (m)",
+     ylab = "Proportion of Area", main = "Hypsometric Curve of Catchment")
+
+# Calculate and Display Elevation Quantiles
+elevation_quantiles <- quantile(as.numeric(values(digital_terrain_model)), probs = c(0.25, 0.5, 0.75), na.rm = TRUE)
+abline(v = elevation_quantiles, col = c("red", "blue", "green"), lty = 2, lwd = 2)
+
+```
+
+[The hypsometric curve shows the distribution of elevation across the catchment area. The majority of the catchment's area is concentrated at lower elevations, as indicated by the steep initial rise in the curve. Elevation quantiles are marked for reference: 25% of the catchment lies below approximately 288 meters (red line), 50% lies below 466 meters (blue line), and 75% lies below 719 meters (green line). This distribution suggests a predominance of lower elevation areas, which can influence runoff dynamics, sediment transport, and vegetation distribution in the catchment.]{style="color:black; font-family:Verdana; font-size:14px; font-style:italic;"}
+
+```{r elevation_quantiles}
+elevation_quantiles
+```
+# [7.5 Thiessen Polygons and Areal Precipitation]{style="color:#12a23a; font-size:20px;"}
+
+```{r thiessen_polygons}
+# whitebox::install_whitebox()
+precip_data <-  data.frame(names=c("P1_Luce", "P2_Solcava", "P3_Lasko", "P4_GornjiGrad", "P5_Radegunda"), lon=c(14.74, 14.69, 15.23, 14.8, 14.93), lat=c(46.35, 46.42, 46.15, 46.29, 46.36))
+
+precip_data
+
+slo_model <- elevation_30s(country="SI", path="slo_100_ASCI")
+
+xprecip <- vect(precip_data, geom=c("lon", "lat"))
+crs(xprecip) <- crs(slo_model)
+plot(slo_model)
+points(xprecip, col = "red", lwd = 10)
+
+
+theisson <- voronoi(xprecip)
+lines(theisson, col = "green")
+
+# reproject catchment boundary to the lat-lon geographic coordinate system
+catchment_area <- vect("basin/6210_Savinja_VSirje.shp")
+catchment_theisson <- project(catchment_area, crs(slo_model))
+lines(catchment_theisson, col = "blue")
+
+
+# Intersection between the catchment area and thiessen polygons
+theisson_area <- intersect(catchment_theisson, theisson)
+lines(theisson_area, lwd=2, col="red")
+
+# calculate the areas of polygons 
+expanse(theisson_area, unit = "km")
+
+proportionP <- expanse(theisson_area, unit="km")/sum(expanse(theisson_area, unit="km"))
+theisson_area$names
+
+# areal precipitation
+areal_precip <- main_data$P1_Luce*proportionP[2] + main_data$P2_Solcava*proportionP[4] + main_data$P3_Lasko*proportionP[3] + main_data$P4_GornjiGrad*proportionP[1] + main_data$P5_Radegunda*proportionP[5]
+
+main_data$Areal_Precip <- areal_precip
+plot(main_data$Date, areal_precip, type = "l", xlab = "Date", ylab = "Areal Precipitation [mm]")
+
+```
+
+# [7.6 Analyse Land-Use of Catchment According to CLC Corine Map]{style="color:#12a23a; font-size:20px;"}
+
+```{r CLC_corine_map}
+# Load Land Cover map
+land_use <- vect("land_use/CLC_2012_SIPolygon.shp")
+
+# Plot the Land Cover map with the catchment area
+plot(land_use, main = "Land Cover", axes = TRUE)
+lines(catchment_area, col = "red")
+
+# Check for invalid geometries in the land cover map and correct them
+which(is.valid(land_use, TRUE) == FALSE)
+land_use <- makeValid(land_use)
+
+# Perform spatial intersection
+intersations <- intersect(catchment_area, land_use)
+
+head(values(intersations))
+
+# Plot the intersection
+plot(intersations, "LABEL2", col = rainbow(20), plg = list(x = "bottomleft", cex = 0.7), mar = c(1, 1, 1, 1))
+
+# Calculate the area of each land use
+land_use_area = data.frame(area = expanse(intersations), desc = intersations$LABEL2)
+
+# Calculate percentage for each land use type
+land_use_area$percentage <- (land_use_area$area / sum(land_use_area$area)) * 100
+
+head(land_use_area)
+
+# Group land use by land use type
+land_use_summary <- land_use_area %>%
+  group_by(desc) %>%
+  summarise(
+    total_area = sum(area),
+    percentage = (sum(area) / sum(land_use_area$area)) * 100
+  )
+
+# Display summarized land use data
+land_use_summary
+
+
+land_use_colors <- rainbow(nrow(land_use_summary))
+
+# Prepare data for plotting
+land_use_summary$desc <- factor(land_use_summary$desc, levels = land_use_summary$desc)
+
+# Create the plot
+ggplot(land_use_summary, aes(x = percentage, y = desc, fill = desc)) +
+  geom_bar(stat = "identity", color = "black", width = 0.5) + 
+  scale_fill_manual(values = land_use_colors) + 
+  labs(
+    title = "Land Use Percentages in Catchment Area",
+    x = "Percentage (%)",
+    y = ""
+  ) +
+  theme_minimal() + 
+  theme(
+    legend.position = "none", 
+    axis.text.y = element_text(size = 6, hjust = 1, color = "black"),  
+    axis.text.x = element_text(size = 8),
+    plot.title = element_text(size = 14, face = "bold")
+  ) +
+  geom_text(
+    aes(label = paste0(round(percentage, 2), "%")), 
+    hjust = -0.2, 
+    color = "black",
+    size = 3
+  ) +
+  coord_cartesian(clip = "off")
+```
+
+
+[The bar chart represents the distribution of land use types within the catchment area. Forests dominate the catchment, covering 55.96% of the total area, followed by heterogeneous agricultural areas at 27.22%. Pastures account for 8.75%, while urban fabric and scrub or herbaceous vegetation associations represent 1.89% and 2.15%, respectively. Other land use types, including permanent crops, inland waters, and industrial or transport units, each occupy less than 1% of the catchment.]{style="color:black; font-family:Verdana; font-size:14px; font-style:italic;"}
+
+
+# [8. HYDROLOGICAL MODELLING (AIR GR)]{style="color:blue; font-family:Arial; font-size:28px;"}
+
+[ In this section, we prepare, calibrate, validate, and compare hydrological models for the catchment. The GR4J and CemaNeige GR6J models will be used to simulate catchment hydrology. Relevant data will be prepared for both models, and datasets will be split (50% for calibration and validation) with the first year reserved as a warm-up period. Performance metrics of the models will be evaluated and compared to determine their suitability for modeling the catchment's hydrology. ]{style="font-family:Arial; font-size:16px;"}
+
+# [8.1 Prepare Data for GR4J and CemaNeige GR6J Models]{style="color:#12a23a; font-size:20px;"}
+
+```{r data_airGR}
+# Create data frame
+model_data <- main_data[, c("Date", "Discharge", "Runoff", "Areal_Precip", "Evapotrans", "Airtemp")]
+
+# Display the new dataframe
+head(model_data)
+
+# Display basic statistics
+summary(model_data)
+
+# Plot flow data
+plot(model_data$Runoff, type = "l", col = "blue", lwd = 2, main = "Flow Data Over Time", xlab = "Days", ylab = "Flow (mm)")
+
+```
+
+# [8.2 Calibrate and Validate Both Hydrological Models]{style="color:#12a23a; font-size:20px;"}
+
+```{r calibrate_validate_models}
+# Create Inputs Model
+InputsModel <- CreateInputsModel(FUN_MOD = RunModel_GR4J, DatesR = as.POSIXct(model_data$Date, format = "%Y-%m-%d"), Precip = model_data$Areal_Precip, PotEvap = model_data$Evapotrans)
+
+# Identify the index where calibration ends
+calibration_end <- which(format(as.Date(model_data$Date), format = "%Y-%m-%d") == "2016-12-31")
+
+# Define the sequence for the run period
+Ind_Run <- seq(366, calibration_end)
+
+
+# Create RunOptions with defined run and warm-up periods
+RunOptions <- CreateRunOptions(FUN_MOD = RunModel_GR4J, InputsModel = InputsModel, IndPeriod_Run = Ind_Run, IndPeriod_WarmUp = 1:365)
+
+# Extract observed discharge data for the run period
+Obs_Discharge <- model_data$Runoff[Ind_Run]
+
+# Create InputsCrit using the Nash-Sutcliffe Efficiency (NSE) criterion
+InputsCrit <- CreateInputsCrit(FUN_CRIT = ErrorCrit_NSE, InputsModel = InputsModel, RunOptions = RunOptions, Obs = Obs_Discharge)
+
+# Define calibration options using the Michel algorithm
+CalibOptions <- CreateCalibOptions(FUN_MOD = RunModel_GR4J, FUN_CALIB = Calibration_Michel)
+
+# Perform calibration to find optimal model parameters
+OutputsCalib <- Calibration_Michel(InputsModel = InputsModel, RunOptions = RunOptions, InputsCrit = InputsCrit, CalibOptions = CalibOptions, FUN_MOD = RunModel_GR4J)
+
+# Extract calibrated parameter values
+ParamGR4J <- OutputsCalib$ParamFinalR
+
+ParamGR4J 
+
+# Run the GR4J model with calibrated parameters
+OutputsModel <- RunModel_GR4J(InputsModel = InputsModel, RunOptions = RunOptions, Param = ParamGR4J)
+
+# Plot the comparison between measured and modeled data
+plot(OutputsModel, model_data$Runoff[366:calibration_end])
+
+# Define the sequence for the validation period
+Ind_Run1 <- seq((calibration_end + 1), nrow(model_data))
+
+# Create RunOptions for the validation period
+RunOptions1 <- CreateRunOptions(FUN_MOD = RunModel_GR4J, InputsModel = InputsModel, IndPeriod_Run = Ind_Run1)
+
+# Run the GR4J model for the validation period
+OutputsModel1 <- RunModel_GR4J(InputsModel = InputsModel, RunOptions = RunOptions1, Param = ParamGR4J)
+
+# Plot the comparison between measured and modeled runoff for validation
+plot(OutputsModel1, model_data$Runoff[Ind_Run1])
+
+# Create InputsCrit for validation using NSE as the criterion
+InputsCrit1 <- CreateInputsCrit(FUN_CRIT = ErrorCrit_NSE, InputsModel = InputsModel, RunOptions = RunOptions1, Obs = model_data$Runoff[Ind_Run1])
+
+# Calculate the validation performance (NSE)
+OutputsCrit1 <- ErrorCrit_NSE(InputsCrit = InputsCrit1, OutputsModel = OutputsModel1)
+
+# Print the validation results
+OutputsCrit1
+```
+
+```{r camaneigeGR6J}
+# Prepare observation data in the required format
+preob <- data.frame(DatesR = as.POSIXct(model_data$Date, format = "%Y-%m-%d"), P=model_data[,4], E=model_data[, 5],Qmm=model_data[,3]) 
+
+# Display the first few rows of the observation data
+head(preob)
+
+# Load example data for the basin
+data(L0123001) 
+
+# Display the hypsometric curve data format
+BasinInfo
+
+# Calculate the hypsometric curve using the digital terrain model
+hypso <- c(min(as.numeric(values(digital_terrain_model)),na.rm=T),as.numeric(quantile(as.numeric(values(digital_terrain_model)),probs=seq(from=0.01,by=0.01,to=0.99),na.rm=T)),max(as.numeric(values(digital_terrain_model)),na.rm=T))
+
+# Define model settings, including the number of height zones and the hypsometric curve
+InputsModel2 <- CreateInputsModel(FUN_MOD = RunModel_CemaNeigeGR6J, as.POSIXct(model_data$Date, format = "%Y-%m-%d"), Precip = model_data[,4], PotEvap = model_data[, 5], TempMean = model_data[,6],  ZInputs = median(hypso), HypsoData = hypso, NLayers = 5)
+
+# Define run options, including warm-up period and annual solid precipitation
+RunOptions2 <- CreateRunOptions(FUN_MOD = RunModel_CemaNeigeGR6J, InputsModel = InputsModel2, IndPeriod_Run = Ind_Run, IndPeriod_WarmUp = 1:365, MeanAnSolidPrecip=c(70,130,180,250,350)) 
+
+# Define the goodness of fit criterion and discharge data
+InputsCrit2 <- CreateInputsCrit(FUN_CRIT = ErrorCrit_NSE, InputsModel = InputsModel2, RunOptions = RunOptions2, 
+                                Obs = model_data[366:calibration_end,3]) 
+
+# Define the calibration method
+CalibOptions2 <- CreateCalibOptions(FUN_MOD = RunModel_CemaNeigeGR6J, FUN_CALIB = Calibration_Michel) 
+
+# Run the model calibration
+OutputsCalib2 <- Calibration_Michel(InputsModel = InputsModel2, RunOptions = RunOptions2, InputsCrit = InputsCrit2, CalibOptions = CalibOptions2, FUN_MOD = RunModel_CemaNeigeGR6J) 
+
+# Save the calibrated parameter values
+ParamGR6JCemaNeige <- OutputsCalib2$ParamFinalR 
+
+# Run the model with the calibrated parameter values
+OutputsModel2 <- RunModel_CemaNeigeGR6J(InputsModel = InputsModel2, RunOptions = RunOptions2, 
+                                        Param = ParamGR6JCemaNeige) 
+
+# Plot the observed versus simulated values
+plot(OutputsModel2, model_data[366:calibration_end,3]) 
+
+```
+
+```{r}
+# Calculate NSE for the validation period
+ErrorCrit_NSE(InputsCrit = InputsCrit2, OutputsModel = OutputsModel2) 
+
+# Create run options for validation
+RunOptions3 <- CreateRunOptions(FUN_MOD = RunModel_CemaNeigeGR6J, InputsModel = InputsModel2, IndPeriod_Run = Ind_Run1) 
+
+# Run the model for validation
+OutputsModel3 <- RunModel_CemaNeigeGR6J(InputsModel = InputsModel2, RunOptions = RunOptions3, Param = ParamGR6JCemaNeige)
+
+# Plot simulated vs observed discharge
+plot(OutputsModel3, Qobs = model_data[Ind_Run1,3]) 
+```
+
+```{r}
+# Create inputs for the NSE criterion during validation
+InputsCrit3 <- CreateInputsCrit(FUN_CRIT = ErrorCrit_NSE, InputsModel = InputsModel2, RunOptions = RunOptions3, Obs = model_data[Ind_Run1,3]) 
+
+# Calculate NSE for the validation period
+OutputsCrit3 <- ErrorCrit_NSE(InputsCrit = InputsCrit3, OutputsModel = OutputsModel3) 
+```
+
+
+# [8.3 Compare the Performance of GR4J and GR6J Models]{style="color:#12a23a; font-size:20px;"}
+
+```{r compare_GR4J_GR6J}
+# Calculate NSE for GR4J model
+OutputsCrit1 <- ErrorCrit_NSE(InputsCrit = InputsCrit1, OutputsModel = OutputsModel1)
+NSE_GR4J <- OutputsCrit1$CritValue 
+
+# Calculate NSE for GR6J model
+OutputsCrit3 <- ErrorCrit_NSE(InputsCrit = InputsCrit3, OutputsModel = OutputsModel3)
+NSE_GR6J <- OutputsCrit3$CritValue 
+
+# Compare the performance of the two models
+if (NSE_GR6J > NSE_GR4J) {
+  cat("The GR6J model performs better with NSE =", NSE_GR6J,
+      "compared to GR4J with NSE =", NSE_GR4J, "\n")
+} else if (NSE_GR6J < NSE_GR4J) {
+  cat("The GR4J model performs better with NSE =", NSE_GR4J,
+      "compared to GR6J with NSE =", NSE_GR6J, "\n")
+} else {
+  cat("Both models perform equally well with NSE =", NSE_GR6J, "\n")
+}
+```
+[The comparison of model performance based on Nash-Sutcliffe Efficiency (NSE) indicates that the GR6J model outperforms the GR4J model. The GR6J model achieved an NSE value of 0.789, whereas the GR4J model achieved an NSE value of 0.719. The enhanced performance of the GR6J model can be attributed to its additional parameters, including an exponential store that improves low-flow simulations, allowing it to better capture hydrological processes compared to the GR4J model. This suggests that GR6J provides a more accurate representation of observed streamflow dynamics.]{style="color:black; font-family:Verdana; font-size:14px; font-style:italic;"}
+
+# [9. HYDROLOGICAL MODELLING (TUWIEN MODEL)]{style="color:blue; font-family:Arial; font-size:28px"}
+
+
+[ In this section, we will explore hydrological modeling using the TUWIEN model. The analysis begins by preparing all relevant data for the model. Following data preparation, the TUWIEN model will be calibrated and validated by splitting the dataset into training and validation periods, using the first year of data for warm-up. Finally, the performance of the TUWIEN model will be compared with the CemaNeige GR6J model. Both graphical and statistical metrics will be used to assess the models' capabilities. ]{style="font-size:16px;"}
+
+# [9.1 Prepare data for the TUWIEN model]{style="color:#12a23a; font-size:20px;"}
+
+```{r TUWIEN_model}
+# Create a data frame for the TUWIEN model
+preob1 <- data.frame(
+  DatesR = as.POSIXct(model_data$Date, format = "%Y-%m-%d"),
+  P = model_data[, 4],
+  E = model_data[, 5],
+  Qmm = model_data[, 3],
+  T = model_data[, 6]
+)
+head(preob1)
+
+# Plot precipitation and runoff data
+plot(preob1$DatesR, preob1$P, type = "l", col = "blue", ylab = "Precipitation [mm]", xlab = "Date", main = "Precipitation over Time")
+plot(preob1$DatesR, preob1$Qmm, type = "l", col = "green", ylab = "Runoff [mm]", xlab = "Date", main = "Runoff over Time")
+```
+
+# [9.2 Calibrate and validate TUWIEN model]{style="color:#12a23a; font-size:20px;"}
+
+```{r calibrate_validate_TUWIEN}
+# End of calibration period
+konec <- which(format(preob1$DatesR, format = "%Y-%m-%d") == "2016-12-31")
+
+# Run TUWIEN model with randomly selected parameter values
+sim1 <- TUWmodel(
+  prec = preob1$P[1:konec],
+  airt = preob1$T[1:konec],
+  ep = preob1$E[1:konec],
+  area = 1,
+  param = c(1.3, 2.0, -1.0, 1.0, 0.0, 0.8, 360.0, 0.2, 0.3, 7.0, 150.0, 50.0, 2.0, 10.0, 25.0),
+  incon = c(50, 0, 2.5, 2.5)
+)
+
+# Check the structure of the simulation output
+str(sim1)
+
+# Plot simulated and observed runoff for the calibration period
+plot(as.numeric(sim1$q)[366:konec], type = "l", col = "red", ylab = "Discharge [mm]", xlab = "Days", main = "Calibration Results")
+lines(preob1$Qmm[366:konec], col = "green")
+legend("topright", legend = c("Simulated", "Observed"), col = c("red", "green"), lty = 1)
+
+# plot the simulated values (for the first year)
+plot(as.numeric(sim1$q)[1:365],type="l", col="red",ylab="Discharge [mm]") 
+
+# add measured flow data
+lines(preob1[1:365,4], col="green") 
+```
+
+```{r TUWIEN_model_fit}
+# Calculate goodness-of-fit statistics for the calibration period
+gof_results <- gof(as.numeric(sim1$q)[366:konec], preob1$Qmm[366:konec])
+gof_results
+
+# Define the objective function for optimization
+msespr <- function (param, precip, temp, potevap, runoff, area) { 
+  simu <- TUWmodel(param, prec=as.numeric(precip), airt=as.numeric(temp), ep=as.numeric(potevap), area=area)$q 
+  simu <- simu[-c(1:365)]  # Remove warm-up period
+  obse <- runoff[-c(1:365)]
+  mse(simu, obse)  # Calculate mean squared error
+}
+
+# Calibrate the model using DEoptim
+calibrate_period1 <- DEoptim(
+  fn = msespr,
+  lower = c(0.9, 0.0, 1.0, -3.0, -2.0, 0.0, 0.0, 0.0, 0.0, 2.0, 30.0, 1.0, 0.0, 0.0, 0.0),
+  upper = c(1.5, 5.0, 3.0, 1.0, 2.0, 1.0, 600.0, 20.0, 2.0, 30.0, 250.0, 100.0, 8.0, 30.0, 50.0),
+  control = DEoptim.control(itermax = 60),
+  precip = preob1$P[1:konec],
+  temp = preob1$T[1:konec],
+  potevap = preob1$E[1:konec],
+  runoff = preob1$Qmm[1:konec],
+  area = 1
+)
+
+# Run the model with calibrated parameters
+sim2 <- TUWmodel(
+  prec = preob1$P[1:konec],
+  airt = preob1$T[1:konec],
+  ep = preob1$E[1:konec],
+  area = 1,
+  param = calibrate_period1$optim$bestmem
+)
+
+# Plot simulated vs observed runoff for the validation period
+plot(as.numeric(sim2$q)[366:konec], type = "l", col = "red", ylab = "Discharge [mm]", xlab = "Days", main = "Validation Results")
+lines(preob1$Qmm[366:konec], col = "green")
+legend("topright", legend = c("Simulated", "Observed"), col = c("red", "green"), lty = 1)
+
+# Plot simulated vs observed runoff for the first year
+plot(as.numeric(sim2$q)[1:365], type = "l", col = "red", ylab = "Discharge [mm]", xlab = "Days", main = "Validation Results for First Year") 
+lines(preob1[1:365, 4], col = "green")
+
+# Calculate NSE for the validation period
+NSE_validation <- NSE(as.numeric(sim2$q)[366:konec], preob1$Qmm[366:konec])
+print(paste("NSE for validation period: ", round(NSE_validation, 3)))
+```
+
+# [9.3 Compare the performance with the CemaNeige GR6J model]{style="color:#12a23a; font-size:20px;"}
+
+```{r compare_TUWIEN_GR6J}
+# Calculate NSE for GR6J model
+OutputsCrit3 <- ErrorCrit_NSE(InputsCrit = InputsCrit3, OutputsModel = OutputsModel3)
+NSE_GR6J <- OutputsCrit3$CritValue 
+
+# Calculate NSE for TUWmodel
+NSE_TUW <- NSE(as.numeric(sim2$q)[366:konec], preob1$Qmm[366:konec])
+
+# Compare the performance of the two models
+if (NSE_GR6J > NSE_TUW) {
+  cat("The GR6J model performs better with NSE =", NSE_GR6J,
+      "compared to TUWmodel with NSE =", NSE_TUW, "\n")
+} else if (NSE_GR6J < NSE_TUW) {
+  cat("The TUWmodel performs better with NSE =", NSE_TUW,
+      "compared to GR6J with NSE =", NSE_GR6J, "\n")
+} else {
+  cat("Both models perform equally well with NSE =", NSE_GR6J, "\n")
+}
+```
+
+[The comparison of model performance based on Nash-Sutcliffe Efficiency (NSE) reveals that the TUWmodel outperforms the GR6J model. The TUWmodel achieved an NSE value of 0.858, compared to the GR6J model's NSE value of 0.789. The superior performance of the TUWmodel can be attributed to its more sophisticated representation of hydrological processes, potentially including enhanced snowmelt modeling and soil moisture dynamics. This indicates that the TUWmodel provides a more precise simulation of observed streamflow, particularly in regions or conditions where such processes are significant.]{style="color:black; font-family:Verdana; font-size:14px; font-style:italic;"}
+
+
+# [10. STOCHASTIC CLIMATE SIMULATOR]{style="color:blue; font-family:Arial; font-size:28px"}
+
+[ In this section, we explore the use of stochastic simulation techniques to model precipitation. First, a stochastic precipitation simulator will be fitted to measured data using the GWEX package. Ten realizations of 13-year simulations will then be generated and compared to the measured data to evaluate the simulator's performance. Finally, the simulated precipitation data will serve as input for the previously calibrated hydrological model (CemaNeige GR6J) to assess its performance under stochastic conditions. ]{style="font-family; font-size:16px;"}
+
+
+# [10.1 Fit a Stochastic Precipitation and Air Temperature Simulator]{style="color:#12a23a; font-size:20px;"}
+
+```{r stochastic_simulator}
+# Transform Precipitation Data to Matrix
+precip_matrix <- as.matrix(main_data[, 8:12])
+
+# Define Precipitation Observations for GWEX
+observed_precip <- GwexObs(variable = 'Prec', date = as.Date(main_data[, 1], format = "%Y.%m.%d"), 
+                           obs = precip_matrix)
+
+# Estimate Parameters for Precipitation Simulator
+precip_params <- fitGwexModel(observed_precip, listOption = list(th = 0.5, nChainFit = 1000))
+
+precip_params
+```
+
+# [10.2 Simulate Realizations and Compare with Measured Data]{style="color:#12a23a; font-size:20px;"}
+
+```{r realizations_data}
+# Simulate Precipitation (10 Realizations for 13 Years)
+simulated_precip <- simGwexModel(precip_params, nb.rep = 10, d.start = as.Date("01012025", "%d%m%Y"), 
+                                 d.end = as.Date("31122037", "%d%m%Y"))
+
+# Summary of Simulated Precipitation
+precip_summary <- summary(simulated_precip@sim[, 1, 1])
+precip_summary
+
+P1_Luce_summary <- summary(main_data$P1_Luce)
+P1_Luce_summary
+
+# Plot Simulated Precipitation for Station 1, Realization 1
+plot(simulated_precip@date, simulated_precip@sim[,1,1], type = "l", col = "green", 
+     main = "Simulated Precipitation Station 1 (P1_Luce)", xlab = "Date", 
+     ylab = "Precipitation (mm)")
+
+# Add Realization 2
+lines(simulated_precip@date, simulated_precip@sim[,1,2], col = "purple")
+
+legend("topright", legend = c("Realization 1", "Realization 2"), col = c("green", "purple"), lty = 1)
+```
+
+```{r compare_measured_simulated}
+# P1_Luce measured yearly precipitation
+P1_Luce_yearly <- main_data %>% 
+  group_by(Year) %>% 
+  summarise(P1_Luce_measured = sum(P1_Luce))
+P1_Luce_yearly
+
+# Dataframe of dates and years
+simulated_yearly <- data.frame(Date = simulated_precip@date, 
+                               Year = format(simulated_precip@date, "%Y"))
+
+# Add yearly precipitation for each realization
+for (i in 1:10) { 
+  simulated_yearly[[paste0("Realization_", i)]] <- simulated_precip@sim[, 1, i] 
+  }
+
+# Calculate yearly totals for each realization
+simulated_combined <- simulated_yearly %>% 
+  group_by(Year) %>% 
+  summarise(across(starts_with("Realization"), ~ sum(.x, na.rm = TRUE)))
+
+simulated_combined
+
+# Convert Year to numeric
+P1_Luce_yearly <- P1_Luce_yearly %>% mutate(Year = as.numeric(Year))
+simulated_combined <- simulated_combined %>% mutate(Year = as.numeric(Year))
+
+# Set up the plot for measured precipitation
+plot(P1_Luce_yearly$Year, P1_Luce_yearly$P1_Luce_measured, type = "o", col = "blue", pch = 16, lwd = 2, 
+     xlab = "Year", ylab = "Total Precipitation (mm)", main = "Measured vs Simulated Yearly Precipitation(P1_Luce)", 
+     ylim = c(500, 2500))
+
+# Add simulated precipitation for each realization
+for (i in 1:10) { 
+  lines(P1_Luce_yearly$Year, simulated_combined[[paste0("Realization_", i)]],
+  col = "red", lty = 2) 
+}
+
+# Add a legend
+legend("topright", legend = c("Measured", "Simulated (Realizations)"), 
+       col = c("blue", "red"), lty = c(1, 2), pch = c(16, NA), lwd = c(2, 1))
+
+```
+
+# [10.3 Use Simulated Data for Hydrological Models]{style="color:#12a23a; font-size:20px;"}
+
+```{r simulated_GR6J}
+for (i in 1:10) {
+  calibration_end1 <- which(format(as.Date(simulated_precip@date), format = "%Y-%m-%d") == "2031-12-31")
+  Ind_Run2 <- seq(366, calibration_end1)
+  
+  InputsModel3 <- CreateInputsModel(FUN_MOD = RunModel_CemaNeigeGR6J, 
+                                    DatesR = as.POSIXct(simulated_precip@date, format = "%Y-%m-%d"), 
+                                    Precip = simulated_precip@sim[, 1, i], PotEvap = model_data[, 5], 
+                                    TempMean = model_data[, 6], ZInputs = median(hypso), 
+                                    HypsoData = hypso, NLayers = 5)
+  
+  RunOptions3 <- CreateRunOptions(FUN_MOD = RunModel_CemaNeigeGR6J, InputsModel = InputsModel3, 
+                                  IndPeriod_Run = Ind_Run2, IndPeriod_WarmUp = 1:365, 
+                                  MeanAnSolidPrecip = c(70, 130, 180, 250, 350))
+  
+  OutputsModel3 <- RunModel_CemaNeigeGR6J(InputsModel = InputsModel3, RunOptions = RunOptions3, 
+                                          Param = ParamGR6JCemaNeige)
+  
+  plot(OutputsModel3)
+}
+
+
+```
+
+
+# [12. MODIS AND ERA5 DATA ANALYSIS]{style="color:blue; font-family:Arial; font-size:28px"}
+
+[In this section, we analyze the surface air temperature data from MODIS for the Savinja_VSirje catchment over a period of at least two years. The temperature characteristics are examined and compared with measured discharge data to identify potential correlations and impacts on hydrological behavior. Additionally, ERA5 data for the entire available period is downloaded and analyzed. A comparison between ERA5 spatial precipitation data and gauge-based areal precipitation measurements is conducted, with plots provided to visually compare the datasets and highlight any differences or similarities.]{style="font-family:Arial; font-size:16px;"}
+
+# [12.1 Download and Process MODIS Surface Temperature Data]{style="color:#12a23a; font-size:20px;"}
+
+```{r download_process_modis}
+# List all available MODIS products
+head(mt_products())
+
+# Check available bands for MODIS product MYD11A2
+head(mt_bands("MYD11A2"))
+
+# Download MODIS surface temperature data
+modis_temp <- mt_subset(
+  product = "MYD11A2",
+  lat = 46.0959,
+  lon = 15.1874,
+  band = "LST_Day_1km",
+  start = "2021-01-01",
+  end = "2022-12-31",
+  km_lr = 80,
+  km_ab = 80,
+  site_name = "Savinja-VelikoSirje",
+  internal = TRUE,
+  progress = FALSE
+)
+
+# Convert data to terra format
+modis_temp_raster <- mt_to_terra(df = modis_temp)
+
+# Plot surface temperature data (Kelvin)
+plot(modis_temp_raster)
+
+# Project the first layer (Jan 1, 2021)
+selected_layer <- project(modis_temp_raster[[1]], crspost)
+plot(selected_layer)
+lines(catchment_area, col = "red")
+
+# Extract temperature data for each date and convert to Celsius
+temperature_data <- data.frame()
+
+for (i in 1:nlyr(modis_temp_raster)) {
+  projected_layer <- project(modis_temp_raster[[i]], crspost)
+  projected_layer <- subst(projected_layer, 0, NA)
+  temp_kelvin <- extract(projected_layer, catchment_area, mean, rm)[2]
+  
+  if (!is.na(temp_kelvin)) {
+    temp_celsius <- temp_kelvin - 273.15
+    new_row <- data.frame(Date = as.Date(names(modis_temp_raster)[i]), Temp_Celsius = temp_celsius, Temp_Kelvin = temp_kelvin)
+    colnames(new_row) <- c("Date", "Temp_Celsius", "Temp_Kelvin")
+    temperature_data <- rbind(temperature_data, new_row)
+  }
+}
+
+head(temperature_data)
+```
+
+# [12.2 Comparison of MODIS and Measured Temperature Data]{style="color:#12a23a; font-size:20px;"}
+
+```{r compare_modis_measured}
+# Filter measured air temperature data
+measured_temp <- main_data[main_data$Date >= as.Date("2021-01-01"), c("Date", "Airtemp")]
+
+# Plot comparison between measured and MODIS temperature data
+plot(
+  as.Date(measured_temp$Date), measured_temp$Airtemp, 
+  type = "l", col = "blue", xlab = "Date", ylab = "Temperature (°C)", 
+  main = "Temperature Comparison: Measured vs. MODIS",
+  ylim = c(-10, 35)
+  
+)
+lines(as.Date(temperature_data$Date), temperature_data$Temp_Celsius, col = "red", type = "o", pch = 16)
+
+legend(
+  "topright", 
+  legend = c("Measured Data", "MODIS Data"), 
+  col = c("blue", "red"), 
+  lty = 1, 
+  pch = c(NA, 16)
+)
+```
+
+# [12.3 Download and Process ERA5 Precipitation Data]{style="color:#12a23a; font-size:20px;"}
+
+```{r download_process_era5}
+# Load ERA5 precipitation data (yearly, land domain)
+# download_data("era5", getwd(), timestep = "yearly", domain = "land")
+
+era5_precip <- rast("era5_tp_mm_land_195901_202112_025_yearly.nc")
+
+# View basic properties and plot the first layer
+era5_precip
+plot(era5_precip[[1]])
+
+# Project catchment area to match ERA5 data
+catchment_projected <- project(catchment_area, crs(era5_precip))
+
+# Plot ERA5 data with catchment boundary overlay
+plot(era5_precip[["tp_1"]], ext = c(14, 16, 45.5, 47))
+lines(catchment_projected, col = "red")
+
+# Extract grid cells within the catchment area
+extracted_cells <- extract(era5_precip[[1]], catchment_projected, xy = TRUE, touches = TRUE, weights = TRUE)
+head(extracted_cells)
+
+# Calculate weighted precipitation
+weighted_precip <- sum(extracted_cells$tp_1 * extracted_cells$weight, na.rm = TRUE)
+weighted_precip
+
+annual_precip <- rep(NA, dim(era5_precip)[3])
+
+# Compute average precipitation for each year
+for (i in 1:dim(era5_precip)[3]) {
+  values <- extract(era5_precip[[i]], catchment_projected)[[2]]
+  annual_precip[i] <- mean(values, na.rm = TRUE)
+}
+
+# Plot annual ERA5 precipitation
+time_series <- as.Date(time(era5_precip))
+plot(
+  time_series, annual_precip, type = "o", 
+  xlab = "Year", ylab = "Annual Precipitation (mm)", 
+  main = "Annual ERA5 Precipitation for Savinja Catchment"
+)
+```
+
+# [12.4 Comparison of ERA5 and Areal Precipitation Data]{style="color:#12a23a; font-size:20px;"}
+
+```{r compare_era5_areal}
+# Aggregate daily Areal Precipitation to annual totals
+areal_precip_annual <- main_data %>%
+  group_by(Year) %>%
+  summarise(Areal_Precip = sum(Areal_Precip, na.rm = TRUE))
+
+# Convert Year to Date format for plotting
+areal_precip_annual$Year <- as.Date(paste0(areal_precip_annual$Year, "-01-01"))
+
+# Filter ERA5 data from 2010 onward
+time_vector <- as.Date(time(era5_precip))
+start_index <- which(time_vector == as.Date("2010-01-01"))
+time_vector_filtered <- time_vector[start_index:length(time_vector)]
+annual_precip_filtered <- annual_precip[start_index:length(annual_precip)]
+
+# Plot Areal and ERA5 Precipitation Comparison
+plot(
+  areal_precip_annual$Year, areal_precip_annual$Areal_Precip, type = "o", col = "blue",
+  xlab = "Year", ylab = "Precipitation (mm)", 
+  main = "Comparison of Areal and ERA5 Precipitation",
+  xlim = as.Date(c("2010-01-01", "2021-12-31")),
+  ylim = c(900, 1700),
+  xaxt = "n"
+)
+
+# Add ERA5 precipitation data
+lines(time_vector_filtered, annual_precip_filtered, col = "red", lty = 1, type = "o")
+axis(
+  1,
+  at = seq(as.Date("2010-01-01"), as.Date("2022-01-01"), by = "1 year"),
+  labels = format(seq(as.Date("2010-01-01"), as.Date("2022-01-01"), by = "1 year"), "%Y")
+)
+
+# Add legend
+legend(
+  "topright", legend = c("Areal Precipitation", "ERA5 Precipitation"),
+  col = c("blue", "red"), lty = 1, pch = c(16, 16)
+)
+
+```

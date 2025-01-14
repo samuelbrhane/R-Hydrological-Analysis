@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SAGA_METADATA>
+  <HISTORY>
+    <MODULE>Polygon Parts to Separate Polygons</MODULE>
+    <OPTION type="boolean" id="LAKES" name="Ignore Lakes">TRUE</OPTION>
+    <DATA type="shapes" id="POLYGONS" name="Polygons">
+      <MODULE>Polygon Dissolve</MODULE>
+      <OPTION type="table_field" id="FIELD_1" name="1. Attribute">0</OPTION>
+      <OPTION type="table_field" id="FIELD_2" name="2. Attribute">-1</OPTION>
+      <OPTION type="table_field" id="FIELD_3" name="3. Attribute">-1</OPTION>
+      <OPTION type="boolean" id="BND_KEEP" name="Keep Boundaries">FALSE</OPTION>
+      <DATA type="shapes" id="POLYGONS" name="Polygons">
+        <MODULE>Polygon Parts to Separate Polygons</MODULE>
+        <OPTION type="boolean" id="LAKES" name="Ignore Lakes">TRUE</OPTION>
+        <DATA type="shapes" id="POLYGONS" name="Polygons">
+          <MODULE>Polygon Dissolve</MODULE>
+          <OPTION type="table_field" id="FIELD_1" name="1. Attribute">5</OPTION>
+          <OPTION type="table_field" id="FIELD_2" name="2. Attribute">-1</OPTION>
+          <OPTION type="table_field" id="FIELD_3" name="3. Attribute">-1</OPTION>
+          <OPTION type="boolean" id="BND_KEEP" name="Keep Boundaries">FALSE</OPTION>
+          <DATA type="shapes" id="POLYGONS" name="Polygons">
+            <MODULE>Copy Selection to New Shapes Layer</MODULE>
+            <DATA type="shapes" id="INPUT" name="Input">
+              <FILE>D:\Nejc\Switch-on\MODIS\ARSO\raz_vp_vse_portal.shp</FILE>D:\Nejc\Switch-on\MODIS\ARSO\raz_vp_vse_portal.shp</DATA>NOT SET</DATA>NOT SET</DATA>NOT SET</DATA>NOT SET</DATA>
+  </HISTORY>
+  <SOURCE>
+    <FILE>D:\Nejc\Switch-on\MODIS\GIS_boundaries\SAGA\6210_Savinja_VSirje.shp</FILE>
+    <DATABASE></DATABASE>
+    <PROJECTION>
+      <OGC_WKT>PROJCS["gauss_krueger_SLO",GEOGCS["GCS_Hermannskogel",DATUM["D_Hermannskogel",SPHEROID["Bessel_1841",6377397.155,299.1528128]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]],PROJECTION["Gauss_Kruger"],PARAMETER["False_Easting",500000.0],PARAMETER["False_Northing",-5000000.0],PARAMETER["Central_Meridian",15.0],PARAMETER["Scale_Factor",0.9999],PARAMETER["Latitude_Of_Origin",0.0],UNIT["Meter",1.0]]</OGC_WKT>
+      <PROJ4>+proj=tmerc +a=6377397.155000 +b=6356078.962818 +x_0=500000.0 +y_0=-5000000.0 +lon_0=15.0 +k_0=0.9999 +lat_0=0.0 +no_defs</PROJ4>
+      <EPSG>-1</EPSG>
+    </PROJECTION>
+  </SOURCE>
+  <DESCRIPTION></DESCRIPTION>
+</SAGA_METADATA>
